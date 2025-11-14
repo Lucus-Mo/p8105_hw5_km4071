@@ -1,0 +1,240 @@
+---
+title: "p8105_hw5_km4071"
+author: "km4071"
+date: "2025-11-9"
+output: github_document:
+toc: true
+toc_depth: 2
+---
+
+```{r}
+set.seed(8105)
+library(tidyverse)
+library(broom)
+```
+
+```{r}
+share_birthday <- function(n, days = 365) {
+  bdays <- sample.int(days, size = n, replace = TRUE)
+  any(duplicated(bdays))
+}
+```
+
+```{r}
+
+sim_prob <- function(n, reps = 10000L) {
+  mean(replicate(reps, share_birthday(n)))
+}
+
+results <- tibble(n = 2:50) |>
+  mutate(
+    prob  = purrr::map_dbl(n, sim_prob, reps = 10000L),
+    se    = sqrt(prob * (1 - prob) / 10000),
+    lower = pmax(0, prob - 1.96 * se),
+    upper = pmin(1, prob + 1.96 * se)
+  )
+
+
+n_at_least_50 <- results |>
+  filter(prob >= 0.5) |>
+  slice_head(n = 1) |>
+  pull(n)
+
+prob_23 <- results |> filter(n == 23) |> pull(prob)
+prob_50 <- results |> filter(n == 50) |> pull(prob)
+
+results
+```
+```{r}
+ggplot(results, aes(x = n, y = prob)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.20) +
+  geom_line() +
+  geom_point(size = 1.3) +
+  geom_hline(yintercept = 0.5, linetype = 2) +
+  geom_vline(xintercept = n_at_least_50, linetype = 3) +
+  annotate(
+    "text",
+    x = n_at_least_50 + 1, y = 0.52,
+    label = paste0("~50% at n = ", n_at_least_50),
+    hjust = 0
+  ) +
+  scale_y_continuous(
+    limits = c(0, 1),
+    labels = scales::label_percent(accuracy = 1)
+  ) +
+  labs(
+    title = "Birthday problem: simulated probability of a shared birthday",
+    subtitle = "10,000 simulations per group size; ribbon shows ~95% Monte Carlo intervals",
+    x = "Group size (n)",
+    y = "Probability of at least one shared birthday"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+
+# Question 2
+```{r}
+set.seed(8105)
+n <- 30
+sigma <- 5
+mu_grid <- 0:6
+reps <- 5000L
+alpha <- 0.05
+```
+
+```{r}
+simulate_once <- function(mu, n = 30, sigma = 5) {
+  x <- rnorm(n, mean = mu, sd = sigma)
+  tt <- t.test(x, mu = 0)
+  tibble(
+    mu      = mu,
+    mu_hat  = mean(x),
+    p_value = tidy(tt)$p.value
+  )
+}
+```
+
+```{r}
+sim_results <- map_dfr(
+  mu_grid,
+  ~ bind_rows(replicate(reps, simulate_once(.x, n, sigma), simplify = FALSE))
+)
+
+# Quick check
+dplyr::glimpse(sim_results)
+```
+```{r}
+power_tbl <- sim_results |>
+  group_by(mu) |>
+  summarize(
+    power = mean(p_value < alpha),
+    mc_se = sqrt(power * (1 - power) / n()),
+    .groups = "drop"
+  )
+
+power_tbl
+```
+```{r}
+ggplot(power_tbl, aes(x = mu, y = power)) +
+  geom_ribbon(aes(ymin = pmax(0, power - 1.96 * mc_se),
+                  ymax = pmin(1, power + 1.96 * mc_se)),
+              alpha = 0.20) +
+  geom_line() +
+  geom_point(size = 1.6) +
+  geom_hline(yintercept = 0.05, linetype = 2) +
+  scale_y_continuous(limits = c(0, 1), labels = scales::label_percent(accuracy = 1)) +
+  labs(
+    title = "Estimated power of a two-sided one-sample t-test (n = 30, σ = 5)",
+    subtitle = "5000 sims per μ; ribbon shows ~95% Monte Carlo intervals",
+    x = "True mean (μ)",
+    y = "Power (Pr reject H0)"
+  ) +
+  theme_minimal(base_size = 12)
+```
+```{r}
+avg_all <- sim_results |>
+  group_by(mu) |>
+  summarize(avg_mu_hat = mean(mu_hat), .groups = "drop") |>
+  mutate(group = "All samples")
+
+avg_rejected <- sim_results |>
+  filter(p_value < alpha) |>
+  group_by(mu) |>
+  summarize(avg_mu_hat = mean(mu_hat), .groups = "drop") |>
+  mutate(group = "Rejected only")
+
+avg_combined <- bind_rows(avg_all, avg_rejected)
+
+avg_combined
+```
+```{r}
+ggplot(avg_combined, aes(x = mu, y = avg_mu_hat, color = group)) +
+  geom_line() +
+  geom_point(size = 1.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = 2) +
+  labs(
+    title = "Average estimated mean (μ̂) vs. true μ",
+    subtitle = "Comparing all samples to those with p < 0.05 (rejections only)",
+    x = "True mean (μ)",
+    y = "Average of μ̂"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom")
+```
+# Question 3
+```{r}
+homicide_raw <- readr::read_csv("homicide-data.csv", show_col_types = FALSE)
+
+# Basic structure and key counts
+n_obs   <- nrow(homicide_raw)
+n_vars  <- ncol(homicide_raw)
+vars    <- names(homicide_raw)
+n_cities <- homicide_raw |> distinct(city, state) |> nrow()
+disp_counts <- homicide_raw |> count(disposition, sort = TRUE)
+
+list(
+  n_observations = n_obs,
+  n_variables = n_vars,
+  variables = vars,
+  n_unique_cities = n_cities
+)
+disp_counts
+```
+
+```{r}
+homicide <- homicide_raw |>
+  mutate(
+    city_state = str_c(city, ", ", state),
+    unsolved   = disposition %in% c("Closed without arrest", "Open/No arrest")
+  )
+
+by_city <- homicide |>
+  group_by(city_state) |>
+  summarize(
+    total    = n(),
+    unsolved = sum(unsolved),
+    .groups = "drop"
+  )
+
+by_city |> arrange(desc(total)) |> head(10)
+```
+
+```{r}
+balt_counts <- by_city |> filter(city_state == "Baltimore, MD")
+balt_test   <- prop.test(balt_counts$unsolved, balt_counts$total)
+
+balt_tidy <- tidy(balt_test) |>
+  select(estimate, conf.low, conf.high)
+
+balt_tidy
+```
+
+```{r}
+city_estimates <- by_city |>
+  mutate(
+    test  = purrr::map2(unsolved, total, ~prop.test(.x, .y)),
+    tidy  = purrr::map(test, broom::tidy)
+  ) |>
+  select(city_state, total, unsolved, tidy) |>
+  unnest(tidy) |>
+  select(city_state, total, unsolved, estimate, conf.low, conf.high)
+
+city_estimates |> arrange(desc(estimate)) |> head(10)
+```
+
+```{r}
+city_estimates |>
+  mutate(city_state = fct_reorder(city_state, estimate)) |>
+  ggplot(aes(x = city_state, y = estimate)) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.15) +
+  geom_point(size = 1.8) +
+  coord_flip() +
+  scale_y_continuous(labels = scales::label_percent(accuracy = 1), limits = c(0, 1)) +
+  labs(
+    title = "Estimated proportion of unsolved homicides by city",
+    subtitle = "Points show prop.test estimates; bars show 95% CIs. Cities ordered by estimate.",
+    x = NULL,
+    y = "Unsolved proportion"
+  )
+```
+
