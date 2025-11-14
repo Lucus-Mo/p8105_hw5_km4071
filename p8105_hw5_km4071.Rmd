@@ -1,10 +1,12 @@
 ---
 title: "p8105_hw5_km4071"
 author: "km4071"
-date: "2025-11-9"
-output: github_document:
-toc: true
-toc_depth: 2
+date: "2025-11-09"
+output:
+  github_document:
+    toc: true
+    toc_depth: 2
+    html_preview: false
 ---
 
 ```{r}
@@ -70,7 +72,8 @@ ggplot(results, aes(x = n, y = prob)) +
   ) +
   theme_minimal(base_size = 12)
 ```
-
+The simulation shows the classic “birthday paradox”: even with uniformly distributed birthdays over 365 days, the chance of at least one match rises nonlinearly with group size because the number of possible pairs grows as n(n-1)/2. The estimated probability crosses 50% around n≈23, and then climbs quickly, exceeding ~90% by the low 40s and approaching near certainty by 
+n=50. This matches the analytical benchmark and highlights how rapidly collision probabilities accumulate as groups get modestly larger.
 
 # Question 2
 ```{r}
@@ -100,7 +103,6 @@ sim_results <- map_dfr(
   ~ bind_rows(replicate(reps, simulate_once(.x, n, sigma), simplify = FALSE))
 )
 
-# Quick check
 dplyr::glimpse(sim_results)
 ```
 ```{r}
@@ -161,6 +163,8 @@ ggplot(avg_combined, aes(x = mu, y = avg_mu_hat, color = group)) +
   theme_minimal(base_size = 12) +
   theme(legend.position = "bottom")
 ```
+ower increases monotonically with effect size: with n=30 and σ=5, the rejection rate is ≈5% when μ=0 (the nominal Type I error), rises to roughly 20% at μ=1, ~55% at μ=2, and approaches 1 by μ≈4–6. The average μ across all simulations lies on the identity line, indicating an unbiased estimator. In contrast, conditioning on significant results (p<0.05) inflates the mean among rejections only is systematically above the true μ for small–moderate effects due to selection on large observed effects (the winner’s curse). As μ grows and power nears 100%, this selection bias vanishes and the conditional and unconditional averages coincide because nearly every sample is deemed significant.
+
 # Question 3
 ```{r}
 homicide_raw <- readr::read_csv("homicide-data.csv", show_col_types = FALSE)
@@ -237,4 +241,4 @@ city_estimates |>
     y = "Unsolved proportion"
   )
 ```
-
+The plot shows large heterogeneity in the share of homicides classified as unsolved across cities: point estimates span roughly 25% to ~75%, with a high cluster (e.g., Chicago, New Orleans, Baltimore) near the upper end and several cities nearer 20–30% at the lower end. The 95% CIs from prop.test are noticeably wider for places with fewer cases, indicating more sampling uncertainty and cautioning against over‑interpreting small rank differences because many adjacent intervals overlap. Even so, the highest‑rate cities’ intervals generally remain above the mid‑range, suggesting persistently lower clearance relative to peers. Overall, clearance rates vary markedly by city, and the precision of each estimate tracks the number of homicides observed.
